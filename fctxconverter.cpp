@@ -4,6 +4,7 @@
 #include "dirent.h"
 #include <iomanip>
 #include <cstdint>
+#include <cstdio> 
 
 using namespace std;
 
@@ -88,6 +89,9 @@ int main(int argc, char* argv[]){
 
 	string directory = "C:/temp/rdb_extract/2/fctx/fctx1/";
 
+	char buf[BUFSIZ];
+    size_t size;
+
 	DIR *dir;
 	struct dirent *file;
 
@@ -115,7 +119,8 @@ int main(int argc, char* argv[]){
 
 	while ((file = readdir (dir)) != NULL) {
 		if(file->d_type == DT_REG){
-			ifstream filestream(directory+file->d_name, ios::binary);
+			//ifstream filestream(directory+file->d_name, ios::binary);
+			FILE* filestream = fopen((directory+file->d_name).c_str(), "rb");
 			
 			if(!filestream){
 				cerr << "could not open " << file->d_name << endl;
@@ -123,7 +128,7 @@ int main(int argc, char* argv[]){
 			}
 
 			struct FCTX header; 
-			filestream.read(reinterpret_cast<char *>(&header), sizeof(header));
+			fread(&header, 1, sizeof(header), filestream);
 
 			if(memcmp(header.magic,"FCTX",4)!=0){
 				continue;
@@ -178,30 +183,28 @@ int main(int argc, char* argv[]){
 			if(inverse_sort_mipmaps){
 				int seek=0;
 				for(int i=header.mipmaps1; i>1; i--){
-					cerr << (MIPMAPSIZE(header.width,i)) << " " << (DXTLENGTH(MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize)) << endl;
 					seek += DXTLENGTH(MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize);
 				}
+
 				for(int i=1; i<=header.mipmaps1; i++){
-					filestream.seekg(seek,ios::cur);
-					int dxtlength = DXTLENGTH(MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize);
+					fseek(filestream, seek, SEEK_CUR);
+					int dxtlength = DXTLENGTH(	MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize);
 					
-					istreambuf_iterator<char> input_iterator(filestream);
-					istreambuf_iterator<char> input_end(filestream);
-					cerr << filestream.tellg() << " ";
-					//This calls operator++ on the iterator, which in turn advances the streambuf.  Damn.
-					//Ok, lets try something
-					int pos = filestream.tellg();
-					std::advance(input_end, dxtlength);
-					filestream.seekg(pos);
-					cerr << filestream.tellg() << " "; 
-					ostreambuf_iterator<char> output_iterator(output); 
-					
-					
+					size_t readsize = BUFSIZ;
+					int bytesread=0;
+					if(dxtlength<readsize){
+						readsize = dxtlength;
+					}
+					while(size = fread(buf, 1, readsize, filestream)){
+						bytesread += size;
+						output.write(buf,size);
+						//what an ugly mix sorry sorry.
 
-					copy(input_iterator, input_end, output_iterator);
+						if(dxtlength < (bytesread+BUFSIZ)){
+							readsize = dxtlength - bytesread;
+						}
+					}
 					
-					cerr << filestream.tellg() << endl;
-
 					seek = -dxtlength - DXTLENGTH(MIPMAPSIZE(header.width,i-1),MIPMAPSIZE(header.height,i-1),blocksize);
 
 					output.flush();
@@ -209,12 +212,12 @@ int main(int argc, char* argv[]){
 			}else{
 				//Aaaahhhaha the mipmaps are sorted ascending by size instead of descending.
 				//Also, alpha seems to work occasionally(mostly?), even if the mask is not set!
-				output << filestream.rdbuf();
+				//output << filestream.rdbuf();
 			}
 
 			output.close();
 
-			filestream.close();
+			fclose(filestream);
 		}
 	}
 
