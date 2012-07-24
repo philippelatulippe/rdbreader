@@ -1,0 +1,10 @@
+rdbreader extracts files from Funcom RDB archives.  It is meant to be run in
+the directory containing the RDB directory.  Output directory is set in
+config.h, where you can also select which types of files to extract.
+
+fctxconverter attemps to convert Funcom's texture container format back into
+DDS.
+
+lipreader extracts audio data from LIP files.
+
+Tested in VS2012 and on Debian squeeze.
