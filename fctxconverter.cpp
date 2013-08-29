@@ -1,25 +1,50 @@
+/*
+ * Copyright 2012 Philippe Latulippe
+ * https://github.com/philippelatulippe/rdbreader
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 #include <iostream>
 #include <fstream>
-#include <string>
+#ifdef _WIN32
 #include "dirent.h"
+#else
+#include <dirent.h>
+#endif
 #include <iomanip>
 #include <cstdint>
 #include <cstdio> 
+
+#include <string>
+#include <cstring>
+
+#include <math.h>
+#include <algorithm>
 
 using namespace std;
 
 struct FCTX{
 	uint8_t		magic[4];
-	uint32_t	unknown1;
-	uint32_t	unknown2;
+	uint32_t	unknown1; //Perhaps an image type (e.g. normal map)
+	uint32_t	unknown2; //Most likely the version
 	uint16_t	width;
 	uint16_t	height;
 	uint8_t		mipmaps1;
 	uint8_t		mipmaps2;
-	uint16_t	unknown3;
+	uint16_t	unknown3; //always zero
 	uint8_t		fourcc[4];
-//	uint16_t	unknown4;
-//	uint16_t	unknown5;
 
 };
 
@@ -77,17 +102,21 @@ int BC2_BLOCKSIZE = 16; //DXT3 (and DXT2)
 int BC3_BLOCKSIZE = 16; //DXT5 (and DXT4)
 int BC4_BLOCKSIZE = 8; 
 
-#define DXTLENGTH(width, height, block_size) max(1, width / 4) * max(1, height / 4) * block_size
+#define DXTLENGTH(width, height, block_size) max(1.0, width / 4) * max(1.0, height / 4) * block_size
 //f(n+1)=f(n)/2
-#define MIPMAPSIZE(size, n) size * pow(2.0f,(1-n))
+#define MIPMAPSIZE(size, n) size * pow(2.0f,(1.0f-n))
 
 int main(int argc, char* argv[]){
-	printf("Converts Funcom texture files to DDS /*TODO:*/and vice versa.\n");
+	printf("Converts Funcom texture files to DDS\n");
 	printf("Usage: %s directory\n",argv[0]);
 	printf("New file is output in same directory as <filename>.dds or <filename>.fctx\n");
 	printf("License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\n\n");
 
-	string directory = "C:/temp/rdb_extract/2/fctx/fctx1/";
+	string directory = "./";
+
+	if(argc == 2){
+		directory = argv[1];
+	}
 
 	char buf[BUFSIZ];
     size_t size;
@@ -155,17 +184,17 @@ int main(int argc, char* argv[]){
 				cerr<<"Strange important number.  Maybe this is a normal map? "<<endl;
 			}
 
+			if(header.unknown3 != 0){
+				cerr<<"Strangeness in the header."<<endl;
+			}
+
 			dds_header.height = header.height;
 			dds_header.width  = header.width;
 			dds_header.mipMapCount = header.mipmaps1;
-			memcpy(&dds_header.ddspf.fourCC, &header.fourcc, sizeof(dds_header.ddspf.fourCC));
+			memcpy(&dds_header.ddspf.fourCC,
+				&header.fourcc,
+				sizeof(dds_header.ddspf.fourCC));
 
-			string output_name = file->d_name;
-			output_name = output_name.substr(0,output_name.rfind('.'));
-
-			ofstream output(directory+output_name+".dds", ios::binary);
-
-			output.write(reinterpret_cast<char *>(&dds_header), sizeof(dds_header));
 
 			bool inverse_sort_mipmaps=false;
 			int blocksize = 0;
@@ -175,44 +204,73 @@ int main(int argc, char* argv[]){
 			}else if(memcmp(header.fourcc,"DXT3",sizeof(header.fourcc))==0){
 				inverse_sort_mipmaps = true;
 				blocksize = BC2_BLOCKSIZE;
+				continue;
 			}else if(memcmp(header.fourcc,"DXT5",sizeof(header.fourcc))==0){
 				inverse_sort_mipmaps = true;
 				blocksize = BC3_BLOCKSIZE;
+				continue;
+			}else if(memcmp(header.fourcc,"MIXD",sizeof(header.fourcc))==0){
+				//This doesn't quite work.  Most of the images are corrupted,
+				//all the images appear in greyscale, the images with recogni-
+				//sable textures have a block offset.
+				//TODO:
+				//1. check the block misalignment.
+				//     strange: the smaller mipmaps are working. (but broken 
+				//     in the same fashion)
+				//2. Play around with the colour masks in the DDS header. (but
+				//     remember they might be greyscale textures!  But 
+				//     probably not considering the dark area.)
+				//3. Perhaps the unknown byte in the FCTX header correlates 
+				//     with the completely corrupt images.
+				//4. Maybe I'm using the wrong blocksize?
+				inverse_sort_mipmaps = true;
+				memcpy(&dds_header.ddspf.fourCC,"ATI1",sizeof(dds_header.ddspf.fourCC));
+				blocksize = BC4_BLOCKSIZE;
 			}
 
+
+			string output_name = file->d_name;
+			output_name = output_name.substr(0,output_name.rfind('.'));
+
+			ofstream output(directory+output_name+".dds", ios::binary);
+
+			output.write(reinterpret_cast<char *>(&dds_header), 
+				sizeof(dds_header));
+
 			if(inverse_sort_mipmaps){
-				int seek=0;
+				int seekto=0;
 				for(int i=header.mipmaps1; i>1; i--){
-					seek += DXTLENGTH(MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize);
+					seekto += DXTLENGTH(MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize);
 				}
 
 				for(int i=1; i<=header.mipmaps1; i++){
-					fseek(filestream, seek, SEEK_CUR);
-					int dxtlength = DXTLENGTH(	MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize);
+					fseek(filestream, seekto, SEEK_CUR);
+					unsigned int dxtlength = DXTLENGTH(	MIPMAPSIZE(header.width,i),MIPMAPSIZE(header.height,i),blocksize);
 					
 					size_t readsize = BUFSIZ;
-					int bytesread=0;
+					unsigned int bytesread=0;
 					if(dxtlength<readsize){
 						readsize = dxtlength;
 					}
-					while(size = fread(buf, 1, readsize, filestream)){
+					while((size = fread(buf, 1, readsize, filestream))){
 						bytesread += size;
+						//mixing C's files API with C++ streams :-\ .
 						output.write(buf,size);
-						//what an ugly mix sorry sorry.
 
 						if(dxtlength < (bytesread+BUFSIZ)){
 							readsize = dxtlength - bytesread;
 						}
 					}
 					
-					seek = -dxtlength - DXTLENGTH(MIPMAPSIZE(header.width,i-1),MIPMAPSIZE(header.height,i-1),blocksize);
-
+					seekto = -dxtlength - (int)(DXTLENGTH(MIPMAPSIZE(header.width,i-1),MIPMAPSIZE(header.height,i-1),blocksize));
+					
 					output.flush();
 				}
 			}else{
-				//Aaaahhhaha the mipmaps are sorted ascending by size instead of descending.
-				//Also, alpha seems to work occasionally(mostly?), even if the mask is not set!
-				//output << filestream.rdbuf();
+				size_t size;
+				while((size = fread(buf, 1, BUFSIZ, filestream))){
+					output.write(buf,size);
+				}
 			}
 
 			output.close();

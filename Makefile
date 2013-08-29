@@ -12,6 +12,7 @@ SRC_rdbreader = 	rdbreader.cpp Buffer.cpp
 SRC_fctxconverter = 	fctxconverter.cpp
 SRC_lipreader = 	lipreader.cpp
 
+#This Makefile is terrible! Who coded this?
 
 .PHONY: depend clean
 

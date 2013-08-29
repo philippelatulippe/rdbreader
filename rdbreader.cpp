@@ -1,45 +1,32 @@
 /*
- * Things to do:
- 1000010 seems to have filenames:
-struct filename_list_header {
-	uint32_t type;
-	uint32_t unknown;
-	uint32_t unknown;
-	uint32_t type_count;
-}
+ * Copyright 2012 Philippe Latulippe
+ * https://github.com/philippelatulippe/rdbreader
 
-struct filename_list_type{
-	uint32_t type;
-	uint32_t name_count;
-}
+This program was adapted from a tool originally from:
 
-struc filename_list_name{
-	uint32_t id;
-	uint32_t length;
-	char* name;
-}
+Project Faolan a Simple and Free Server Emulator for Age of Conan.
+Copyright (C) 2009, 2010, 2011, 2012 The Project Faolan Team
 
-  This will have to be a two-pass process then.
-  Of course, they're probably all bunched up in the same RDB file,
-  but I'd rather stick with using the index.
-  Unless there's only one file?  *TODO*: check this.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-  *
-  * LMXB files are binary XML files.  With a string pool at the bottom.
-  * Looking at that pool, these are the same types of documents as the 
-  * plain-text XML ones.  Why have both?  Are they the same?
-  *
-  * A preliminary search reveals that 358180 (xml) is identical to the 
-  * start of 376465 (bxml) except that the BXML file is much longer.
-  *
-  * The bxml files have what seem to be pointers to the string pools.
-  * But their LSB is off!
-  *
- */
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+//Some notes at the bottom of this file, if anyone ever sees this.
 
 #include <errno.h>
 #include "common.h"
 #include "config.h"
+#include <string.h>
 
 #ifdef _WIN32
 #include <direct.h>
@@ -52,9 +39,11 @@ using namespace std;
 
 #define RDBDATA_FILECOUNT 30
 
+const char* PNGHEADER = "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A";
+
 int main(int argc, char *argv[])
 {
-	printf("Reader for Funcom RDB %s <https://github.com/philippelatulippe/rdbreader>\n", VERSION);
+	printf("Reader for Funcom RDB, %s <https://github.com/philippelatulippe/rdbreader>\n", VERSION);
 	printf("Options are set at compile time, see config.h.\n");
 	printf("License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\n\n");
 	
@@ -79,7 +68,7 @@ int main(int argc, char *argv[])
 	Hdr.hash3 = 0;
 	Hdr.hash4 = 0;
 	Hdr.recordCount = 0;
-	uint32 pointer = 0;
+	//uint32 pointer = 0;
 		
 	Hdr.magic = Buffer::read(&idx, 4);
 	printf("Get Header: %s\n", Hdr.magic.c_str());
@@ -439,7 +428,6 @@ int main(int argc, char *argv[])
 			typeUnknown = false;
 			break;
 		case MPEG:
-			//Strange files that contain a strange MPEG stream.
 			directory1 = "mpeg/";
 			directory2 = "mpeg/"; 
 			fileExt = ".mpeg";
@@ -452,10 +440,6 @@ int main(int argc, char *argv[])
 			typeUnknown = false;
 			break;
 		case FCTX1:
-			//These seem to encapsulate strange DXT-compressed textures.
-			//A few of them are actually TGAs, some are FCTX with an
-			//unknown compression format.  What is the pixel format?
-			//Some are DDS with the 3 word special header.
 			directory1 = "fctx/";
 			directory2 = "fctx1/"; 
 			fileExt = ".fctx";
@@ -587,8 +571,7 @@ int main(int argc, char *argv[])
 			fileExt = ".xml";
 			typeUnknown = false;
 			break;
-		case LIPSYNC_AND_VOICE:
-			//Familiar: http://falloutmods.wikia.com/wiki/LIP_File_Format
+		case LIP:
 			directory1 = "ogg/";
 			directory2 = "lip/"; 
 			fileExt = ".lip";
@@ -671,7 +654,7 @@ int main(int argc, char *argv[])
 		 || (DS[i].type == BOUNDEDAREACOLLECTIONS && !boundedareacollections)
 		 || (DS[i].type == ENVIRONMENTSETTINGS && !environmentsettings)
 		 || (DS[i].type == SKYDOME && !skydome)
-		 || (DS[i].type == LIPSYNC_AND_VOICE && !lipsync_and_voice)
+		 || (DS[i].type == LIP && !lip)
 		 || (DS[i].type == PLAYFIELDDESCRIPTIONDATA && !playfielddescriptiondata)
 		 || (typeUnknown == true && !unknown)
 		){
@@ -725,6 +708,8 @@ int main(int argc, char *argv[])
 						skipWords = 3;
 					}else if(magic[0]==0x00 && magic[1]<10 && magic[2]<12){
 						fileExt = ".tga";
+					}else if(memcmp(magic,PNGHEADER,4)==0){
+						fileExt = ".png";
 					}else{
 						fileExt = ".dat";
 					}
@@ -738,7 +723,7 @@ int main(int argc, char *argv[])
 				file += fnr;
 				file += fileExt;
 				
-				if(DS[i].idx == 207762 || DS[i].idx == 206540){
+				if(DS[i].idx == 210680 || DS[i].idx == 206540){
 					cout << "BREAK OUT!" << endl;
 				}
 
@@ -761,3 +746,60 @@ int main(int argc, char *argv[])
 
 	}
 }
+
+/*
+ * Things to do:
+ 1000010 seems to have filenames:
+struct filename_list_header {
+	uint32_t type;
+	uint32_t unknown;
+	uint32_t unknown;
+	uint32_t type_count;
+}
+
+//The first three words must be the usual junk.
+
+struct filename_list_type{
+	uint32_t type;
+	uint32_t name_count;
+}
+
+struc filename_list_name{
+	uint32_t id;
+	uint32_t length;
+	char* name;
+}
+
+  This will have to be a two-pass process then.
+  Of course, they're probably all bunched up in the same RDB file,
+  but I'd rather stick with using the index.
+  Unless there's only one file?  *TODO*: check this.
+
+  *
+  * LMXB files are binary XML files.  With a string pool at the bottom.
+  * Looking at that pool, these are the same types of documents as the 
+  * plain-text XML ones.  Why have both?  Are they the same?
+  *
+  * A preliminary search reveals that 358180 (xml) is identical to the 
+  * start of 376465 (bxml) except that the BXML file is much longer.
+  *
+  * The bxml files have what seem to be pointers to the string pools.
+  * But their LSB is off!
+  *
+
+  *
+  * FCTX's MIXD... "mixed" or "DX image"?
+  * A bug report for wine links them to ATI1 -> BC4 compression algorithm
+  *
+
+  *
+  * Those videos are all strange. ffmpeg is clueless, DirectShow finds an
+  * MPEG stream and renders a slightly glitchy image. Must be a specialized
+  * container format. It is packed with interesting strings.
+  * 
+  * Related links:
+  * http://www.emucr.com/2012/06/vgmtoolbox-svn-r870.html
+  * http://sourceforge.net/projects/vgmtoolbox/
+  * http://hcs64.com/vgm_ripping.html (see utf_tab)
+  *
+ */
