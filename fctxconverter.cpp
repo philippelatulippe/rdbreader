@@ -204,11 +204,9 @@ int main(int argc, char* argv[]){
 			}else if(memcmp(header.fourcc,"DXT3",sizeof(header.fourcc))==0){
 				inverse_sort_mipmaps = true;
 				blocksize = BC2_BLOCKSIZE;
-				continue;
 			}else if(memcmp(header.fourcc,"DXT5",sizeof(header.fourcc))==0){
 				inverse_sort_mipmaps = true;
 				blocksize = BC3_BLOCKSIZE;
-				continue;
 			}else if(memcmp(header.fourcc,"MIXD",sizeof(header.fourcc))==0){
 				//This doesn't quite work.  Most of the images are corrupted,
 				//all the images appear in greyscale, the images with recogni-
