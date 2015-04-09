@@ -102,7 +102,7 @@ int BC2_BLOCKSIZE = 16; //DXT3 (and DXT2)
 int BC3_BLOCKSIZE = 16; //DXT5 (and DXT4)
 int BC4_BLOCKSIZE = 8; 
 
-#define DXTLENGTH(width, height, block_size) max(1.0, width / 4) * max(1.0, height / 4) * block_size
+#define DXTLENGTH(width, height, block_size) max(1.0f, width / 4) * max(1.0f, height / 4) * block_size
 //f(n+1)=f(n)/2
 #define MIPMAPSIZE(size, n) size * pow(2.0f,(1.0f-n))
 
