@@ -108,23 +108,55 @@ int BC4_BLOCKSIZE = 8;
 
 int main(int argc, char* argv[]){
 	printf("Converts Funcom texture files to DDS\n");
-	printf("Usage: %s directory\n",argv[0]);
+	printf("Usage: %s [-f] [input directory [output_directory]]\n",argv[0]);
 	printf("New file is output in same directory as <filename>.dds or <filename>.fctx\n");
 	printf("License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\n\n");
 
-	string directory = "./";
+	string input_directory = "./";
+	string output_directory = input_directory;
+	bool force_overwrite = false;
 
-	if(argc == 2){
-		directory = argv[1];
+	string output_directory_joiner = "";
+	string input_directory_joiner = "";
+
+	int arg_state = 0;
+	for(int i = 1; i < argc; i++){
+		if(argv[i][0] == '-'){
+			if(strlen(argv[i]) >= 2 && argv[i][1] == 'f'){
+				force_overwrite = true;
+			}else{
+				cerr << "Unknown argument " << argv[i][1] << endl;
+				exit(1);
+			}
+		}else if(arg_state == 0){
+			input_directory = argv[i];
+			output_directory = argv[i];
+			if(input_directory.find_last_of("/\\") != input_directory.length() - 1){
+				input_directory_joiner = "/";
+				output_directory_joiner = "/";
+			}
+			arg_state++;
+		}else if(arg_state == 1){
+			output_directory = string(argv[i]);
+			if(output_directory.find_last_of("/\\") != output_directory.length() - 1){
+				output_directory_joiner = "/";
+			}else{
+				output_directory_joiner = "";
+			}
+			arg_state++;
+		}else{
+			cerr << "Too many arguments" << endl;
+			exit(1);
+		}
 	}
 
 	char buf[BUFSIZ];
-    size_t size;
+	size_t size;
 
 	DIR *dir;
 	struct dirent *file;
 
-	dir = opendir(directory.c_str());
+	dir = opendir(input_directory.c_str());
 
 	if (dir == NULL) {
 		printf("could not open dir");
@@ -148,8 +180,8 @@ int main(int argc, char* argv[]){
 
 	while ((file = readdir (dir)) != NULL) {
 		if(file->d_type == DT_REG){
-			//ifstream filestream(directory+file->d_name, ios::binary);
-			FILE* filestream = fopen((directory+file->d_name).c_str(), "rb");
+			//ifstream filestream(input_directory+file->d_name, ios::binary);
+			FILE* filestream = fopen((input_directory+input_directory_joiner+file->d_name).c_str(), "rb");
 			
 			if(!filestream){
 				cerr << "could not open " << file->d_name << endl;
@@ -227,10 +259,21 @@ int main(int argc, char* argv[]){
 			}
 
 
-			string output_name = file->d_name;
-			output_name = output_name.substr(0,output_name.rfind('.'));
+			string output_basename = file->d_name;
+			output_basename = output_basename.substr(0,output_basename.rfind('.'));
+			string output_name = output_directory+output_directory_joiner+output_basename+".dds";
 
-			ofstream output(directory+output_name+".dds", ios::binary);
+			if(!force_overwrite){
+				fstream filetest(output_name, ios::in);
+				if(filetest){
+					cerr << output_name << " already exists." 
+					     << " Use the -f argument to overwrite files." << endl;
+					filetest.close();
+					continue;
+				}
+			}
+
+			ofstream output(output_name, ios::binary);
 
 			output.write(reinterpret_cast<char *>(&dds_header), 
 				sizeof(dds_header));
